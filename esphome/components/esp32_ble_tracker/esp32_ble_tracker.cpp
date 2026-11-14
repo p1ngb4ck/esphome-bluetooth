@@ -248,7 +248,7 @@ void ESP32BLETracker::pause_scan() {
     return;
   }
   this->scan_continuous_ = false;
-#ifdef ESPHOME_ESP32_BLE_TRACKER_CLIENT_COUNT
+#ifdef USE_ESP32_BLE_TRACKER_SHORT_SCAN_WINDOW
   this->skip_next_scan_end_ = false;
 #endif
   this->stop_when_started_ = true;
