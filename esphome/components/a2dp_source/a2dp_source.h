@@ -15,7 +15,7 @@
 #include "esphome/components/number/number.h"
 #endif
 #ifdef USE_BT_PAIRING
-#include "esphome/components/bt_host/bt_host.h"
+#include "esphome/components/bt_pairing/bt_pairing.h"
 #endif
 #ifdef USE_A2DP_SOURCE_PAUSE_BLE_SCAN
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
@@ -46,7 +46,7 @@ struct DiscoveredDevice {
 class A2DPSource : public Component
 #ifdef USE_BT_PAIRING
     ,
-                   public bt_host::PairingTarget
+                   public bt_pairing::PairingTarget
 #endif
 {
  public:
@@ -92,20 +92,18 @@ class A2DPSource : public Component
 
   /// @brief How long the connected device takes to play what it receives (ms), as set for it; 0
   ///        while none is connected. Kept per device.
-  int32_t output_delay_ms() const {
+  uint32_t output_delay_ms() const {
     if (!this->connected_.load())
       return 0;
-    const int32_t set = this->delay_ms_.load(std::memory_order_relaxed);
+    const uint32_t set = this->delay_ms_.load(std::memory_order_relaxed);
     if (set != 0)
       return set;
-    return static_cast<int32_t>(std::min<uint32_t>(this->reported_delay_ms_.load(std::memory_order_relaxed),
-                                                   this->max_delay_ms_.load(std::memory_order_relaxed)));
+    return std::min<uint32_t>(this->reported_delay_ms_.load(std::memory_order_relaxed),
+                              this->max_delay_ms_.load(std::memory_order_relaxed));
   }
   /// @brief Sets and keeps the delay of the connected device.
-  void set_output_delay_ms(int32_t ms);
+  void set_output_delay_ms(uint32_t ms);
   static constexpr uint32_t MAX_OUTPUT_DELAY_MS = 1600;
-  static constexpr int32_t MIN_OUTPUT_DELAY_MS = -800;
-  int32_t min_output_delay_ms() const { return MIN_OUTPUT_DELAY_MS; }
   /// @brief The most a delay may be set to (what its user has room for, e.g. a video player's sound
   ///        lead), at most MAX_OUTPUT_DELAY_MS. A larger kept delay stays kept; its user clamps it.
   void set_max_output_delay_ms(uint32_t ms);
@@ -133,15 +131,15 @@ class A2DPSource : public Component
   /// @brief Pairs with the device at this place in discovered_devices() (the select).
   bool pair_with_index(size_t index);
 #ifdef USE_BT_PAIRING
-  void set_pairing(bt_host::BTHost *pairing) { this->pairing_ = pairing; }
+  void set_pairing(bt_pairing::BTPairing *pairing) { this->pairing_ = pairing; }
   void set_slot(uint32_t slot) { this->slot_ = slot; }
-  bool pairs(bt_host::Transport transport, bt_host::DeviceKind kind) const override {
-    return transport == bt_host::Transport::CLASSIC && kind == bt_host::DeviceKind::AUDIO;
+  bool pairs(bt_pairing::Transport transport, bt_pairing::DeviceKind kind) const override {
+    return transport == bt_pairing::Transport::CLASSIC && kind == bt_pairing::DeviceKind::AUDIO;
   }
   uint32_t pairing_slot() const override { return this->slot_; }
   /// The device picked replaces the stored one.
   bool is_free() const override { return true; }
-  bool pair_device(const bt_host::ScannedDevice &device) override;
+  bool pair_device(const bt_pairing::ScannedDevice &device) override;
   bool is_device_connected() const override { return this->connected_.load(); }
   void connect_device() override { this->source_.reconnect(); }
   void disconnect_device() override { this->source_.disconnect(); }
@@ -214,18 +212,18 @@ class A2DPSource : public Component
   microphone::MicrophoneSource *mic_source_{nullptr};
 #endif
 #ifdef USE_BT_PAIRING
-  bt_host::BTHost *pairing_{nullptr};
-  bt_host::ScannedDevice picked_{};  // stored in bt_host once it connects
+  bt_pairing::BTPairing *pairing_{nullptr};
+  bt_pairing::ScannedDevice picked_{};  // stored in bt_pairing once it connects
   uint32_t slot_{0};
   bool picked_valid_{false};
-  // The stored device connected without a record in bt_host: kept with the name it reports
+  // The stored device connected without a record in bt_pairing: kept with the name it reports
   // (asked for with Read Remote Name; the answer comes on Bluedroid's task).
   uint8_t name_addr_[ESP_BD_ADDR_LEN]{};
-  char name_buf_[sizeof(bt_host::PairingRecord::name)]{};   // main loop
-  char rmt_name_[sizeof(bt_host::PairingRecord::name)]{};   // Bluedroid's task, then name_ready_
+  char name_buf_[sizeof(bt_pairing::PairingRecord::name)]{};   // main loop
+  char rmt_name_[sizeof(bt_pairing::PairingRecord::name)]{};   // Bluedroid's task, then name_ready_
   std::atomic<bool> name_wanted_{false};
   std::atomic<bool> name_ready_{false};
-  bool keep_pending_{false};  // stored once bt_host has its database
+  bool keep_pending_{false};  // stored once bt_pairing has its database
   uint8_t switch_addr_[ESP_BD_ADDR_LEN]{};  // connected to once the one connected now is gone
   bool switch_pending_{false};
   bool rejected_{false};  // a device not paired was sent away: its disconnect is not reported
@@ -257,7 +255,7 @@ class A2DPSource : public Component
 
   std::atomic<bool> pairing_mode_{false};
   std::atomic<bool> connected_{false};
-  std::atomic<int32_t> delay_ms_{0};
+  std::atomic<uint32_t> delay_ms_{0};
   std::atomic<uint32_t> reported_delay_ms_{0};
   std::atomic<uint32_t> max_delay_ms_{MAX_OUTPUT_DELAY_MS};
   ESPPreferenceObject delay_pref_;

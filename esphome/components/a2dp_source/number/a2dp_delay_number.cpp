@@ -8,7 +8,7 @@ namespace esphome {
 namespace a2dp_source {
 
 void A2DPDelayNumber::control(float value) {
-  this->parent_->set_output_delay_ms(static_cast<int32_t>(value < 0 ? value - 0.5f : value + 0.5f));
+  this->parent_->set_output_delay_ms(value > 0 ? static_cast<uint32_t>(value + 0.5f) : 0);
 }
 
 }  // namespace a2dp_source
