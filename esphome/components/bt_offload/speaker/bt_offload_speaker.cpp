@@ -10,14 +10,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 namespace esphome::bt_offload {
 
 static const char *const TAG = "bt_offload.speaker";
 
-static constexpr uint8_t MSG_AUDIO_PCM = 0x32;
-static constexpr uint8_t MSG_AUDIO_PCM_AT = 0x38;
+static constexpr uint32_t MSG_AUDIO_PCM = 0x42545032u;
 
 void BTOffloadSpeaker::setup() {
   this->space_ = xSemaphoreCreateBinaryStatic(&this->space_control_);
@@ -45,7 +43,7 @@ size_t BTOffloadSpeaker::play(const uint8_t *data, size_t length, TickType_t tic
   if (written == 0 && ticks_to_wait > 0 && xSemaphoreTake(this->space_, ticks_to_wait) == pdTRUE)
     written = this->write_(data, length);
   if (written > 0)
-    this->pump_();
+    this->enable_loop_soon_any_context();
   return written;
 }
 
@@ -73,7 +71,6 @@ void BTOffloadSpeaker::stop() {
 void BTOffloadSpeaker::finish() {
   if (this->state_ == speaker::STATE_RUNNING) {
     this->state_ = speaker::STATE_STOPPING;
-    this->pump_();
     this->enable_loop_soon_any_context();
   }
 }
@@ -94,75 +91,30 @@ size_t BTOffloadSpeaker::fill_(uint8_t *dst, size_t len, void *ctx) {
   return self->ring_->read(dst, len, 0);
 }
 
-size_t BTOffloadSpeaker::fill_at_(uint8_t *dst, size_t len, void *ctx) {
-  auto *self = static_cast<BTOffloadSpeaker *>(ctx);
-  const uint32_t position = self->sent_.load(std::memory_order_acquire);
-  std::memcpy(dst, &position, sizeof(position));
-  self->filled_ = self->ring_->read(dst + sizeof(position), len - sizeof(position), 0);
-  return self->filled_ > 0 ? self->filled_ + sizeof(position) : 0;
-}
-
-uint32_t BTOffloadSpeaker::room_() const {
-  if (!this->window_.load(std::memory_order_acquire))
-    return this->credit_.load(std::memory_order_acquire);
-  const int32_t room = static_cast<int32_t>(this->limit_.load(std::memory_order_acquire) -
-                                            this->sent_.load(std::memory_order_acquire));
-  return room > 0 ? static_cast<uint32_t>(room) : 0;
-}
-
-bool BTOffloadSpeaker::send_() {
-  bool sent = false;
-  while (this->connected_.load(std::memory_order_acquire)) {
-    const uint32_t credit = this->room_();
-    if (credit == 0)
-      break;
-    LockGuard guard(this->lock_);
-    if (this->ring_ == nullptr)
-      break;
-    const size_t available = this->ring_->available();
-    const bool last = this->state_ == speaker::STATE_STOPPING;
-    size_t len = std::min<size_t>(std::min<size_t>(available, CHUNK), credit);
-    len -= len % BYTES_PER_FRAME;
-    if (len == 0 || (len < CHUNK && !last))
-      break;
-    if (this->window_.load(std::memory_order_acquire)) {
-      if (!usb_bluetooth::c6_offload::post_filled(MSG_AUDIO_PCM_AT, len + sizeof(uint32_t), &BTOffloadSpeaker::fill_at_,
-                                                  this))
-        break;
-      this->sent_.fetch_add(static_cast<uint32_t>(this->filled_), std::memory_order_acq_rel);
-    } else {
-      if (!usb_bluetooth::c6_offload::post_filled(MSG_AUDIO_PCM, len, &BTOffloadSpeaker::fill_, this))
-        break;
-      this->credit_.fetch_sub(static_cast<uint32_t>(len), std::memory_order_acq_rel);
-    }
-    sent = true;
-  }
-  return sent;
-}
-
-void BTOffloadSpeaker::pump_() {
-  this->again_.store(true, std::memory_order_release);
-  while (!this->pumping_.exchange(true, std::memory_order_acq_rel)) {
-    bool sent = false;
-    while (this->again_.exchange(false, std::memory_order_acq_rel))
-      sent |= this->send_();
-    this->pumping_.store(false, std::memory_order_release);
-    if (sent)
-      xSemaphoreGive(this->space_);
-    if (!this->again_.load(std::memory_order_acquire))
-      break;
-  }
-}
-
 void BTOffloadSpeaker::loop() {
-  const uint32_t frames = this->credited_frames_.exchange(0, std::memory_order_acq_rel);
-  if (frames > 0)
-    this->audio_output_callback_.call(frames, this->credited_at_.load(std::memory_order_acquire));
   if (this->state_ == speaker::STATE_STOPPED) {
     this->release_();
     this->disable_loop();
     return;
   }
+  bool sent = false;
+  while (this->connected_.load() && this->credit_ > 0) {
+    LockGuard guard(this->lock_);
+    if (this->ring_ == nullptr)
+      break;
+    const size_t available = this->ring_->available();
+    const bool last = this->state_ == speaker::STATE_STOPPING;
+    size_t len = std::min<size_t>(std::min<size_t>(available, CHUNK), this->credit_);
+    len -= len % BYTES_PER_FRAME;
+    if (len == 0 || (len < CHUNK && !last))
+      break;
+    if (!usb_bluetooth::c6_offload::post_filled(MSG_AUDIO_PCM, len, &BTOffloadSpeaker::fill_, this))
+      break;
+    this->credit_ -= len;
+    sent = true;
+  }
+  if (sent)
+    xSemaphoreGive(this->space_);
   if (this->state_ == speaker::STATE_STOPPING && (!this->connected_.load() || !this->has_buffered_data())) {
     this->state_ = speaker::STATE_STOPPED;
     this->release_();
@@ -172,10 +124,7 @@ void BTOffloadSpeaker::loop() {
 
 void BTOffloadSpeaker::on_audio_state(bool connected) {
   this->connected_.store(connected);
-  this->credit_.store(connected ? C6_RING : 0, std::memory_order_release);
-  this->limit_.store(this->sent_.load(std::memory_order_acquire) + (connected ? C6_RING : 0),
-                     std::memory_order_release);
-  this->window_.store(connected && usb_bluetooth::c6_offload::audio_window(), std::memory_order_release);
+  this->credit_ = connected ? C6_RING : 0;
   {
     LockGuard guard(this->lock_);
     if (this->ring_ != nullptr)
@@ -183,34 +132,13 @@ void BTOffloadSpeaker::on_audio_state(bool connected) {
   }
   if (connected)
     this->apply_volume_();
-  this->pump_();
   this->enable_loop();
 }
 
 void BTOffloadSpeaker::on_credit(uint32_t bytes) {
-  uint32_t credit = this->credit_.load(std::memory_order_acquire);
-  while (!this->credit_.compare_exchange_weak(credit, std::min<uint32_t>(credit + bytes, C6_RING),
-                                              std::memory_order_acq_rel))
-    ;
-  this->credited_at_.store(esp_timer_get_time(), std::memory_order_release);
-  this->credited_frames_.fetch_add(bytes / BYTES_PER_FRAME, std::memory_order_acq_rel);
-  this->pump_();
-  this->enable_loop_soon_any_context();
-}
-
-void BTOffloadSpeaker::on_window(uint32_t limit, uint32_t waiting) {
-  const uint32_t before = this->limit_.exchange(limit, std::memory_order_acq_rel);
-  const int32_t moved = static_cast<int32_t>(limit - before);
-  if (moved > 0) {
-    this->credited_at_.store(esp_timer_get_time(), std::memory_order_release);
-    this->credited_frames_.fetch_add(static_cast<uint32_t>(moved) / BYTES_PER_FRAME, std::memory_order_acq_rel);
-  }
-  if (waiting == 0 && this->room_() < CHUNK && this->connected_.load(std::memory_order_acquire)) {
-    const uint32_t position = this->sent_.load(std::memory_order_acquire);
-    usb_bluetooth::c6_offload::post(MSG_AUDIO_PCM_AT, reinterpret_cast<const uint8_t *>(&position), sizeof(position));
-  }
-  this->pump_();
-  this->enable_loop_soon_any_context();
+  this->credit_ = std::min<uint32_t>(this->credit_ + bytes, C6_RING);
+  this->audio_output_callback_.call(bytes / BYTES_PER_FRAME, esp_timer_get_time());
+  this->enable_loop();
 }
 
 void BTOffloadSpeaker::set_volume(float volume) {

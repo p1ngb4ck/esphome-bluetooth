@@ -1,14 +1,11 @@
 #include "gap_classic.h"
 
 #ifdef USE_ESP32
-#include <sdkconfig.h>
-#endif
-
-#if defined(USE_ESP32) && defined(CONFIG_BT_BLUEDROID_ENABLED)
 
 #include "esphome/core/log.h"
 
 #include <esp_bt_main.h>
+#include <sdkconfig.h>
 #ifdef CONFIG_BT_BLE_ENABLED
 #include <esp_gap_ble_api.h>
 #endif

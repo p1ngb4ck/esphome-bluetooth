@@ -2,8 +2,7 @@ import esphome.codegen as cg
 from esphome.components import select
 import esphome.config_validation as cv
 
-from .. import CONF_BT_HOST_ID, bt_host_ns
-from ..pairing import DevicePicker
+from .. import CONF_BT_HOST_ID, BTHost, bt_host_ns
 
 DEPENDENCIES = ["bt_host"]
 
@@ -11,7 +10,7 @@ BTHostSelect = bt_host_ns.class_("BTHostSelect", select.Select, cg.Component)
 
 CONFIG_SCHEMA = (
     select.select_schema(BTHostSelect, icon="mdi:bluetooth-connect")
-    .extend({cv.GenerateID(CONF_BT_HOST_ID): cv.use_id(DevicePicker)})
+    .extend({cv.GenerateID(CONF_BT_HOST_ID): cv.use_id(BTHost)})
     .extend(cv.COMPONENT_SCHEMA)
 )
 
