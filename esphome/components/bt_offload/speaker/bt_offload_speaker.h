@@ -22,7 +22,7 @@ namespace esphome::bt_offload {
 class BTOffloadSpeaker : public speaker::Speaker, public Component, public Parented<BTOffload> {
  public:
   static constexpr size_t RING_BYTES = 52920;
-  static constexpr size_t CHUNK = 1024;
+  static constexpr size_t CHUNK = 4096;
   static constexpr uint32_t C6_RING = 16384;
   static constexpr uint32_t BYTES_PER_FRAME = 4;
 
@@ -42,32 +42,19 @@ class BTOffloadSpeaker : public speaker::Speaker, public Component, public Paren
 
   void on_audio_state(bool connected);
   void on_credit(uint32_t bytes);
-  void on_window(uint32_t limit, uint32_t waiting);
 
  protected:
   static size_t fill_(uint8_t *dst, size_t len, void *ctx);
-  static size_t fill_at_(uint8_t *dst, size_t len, void *ctx);
-  uint32_t room_() const;
   size_t write_(const uint8_t *data, size_t length);
   void release_();
   void apply_volume_();
-  void pump_();
-  bool send_();
 
   mutable Mutex lock_;
   std::unique_ptr<ring_buffer::RingBuffer> ring_;
   SemaphoreHandle_t space_{nullptr};
   StaticSemaphore_t space_control_;
   std::atomic<bool> connected_{false};
-  std::atomic<uint32_t> credit_{0};
-  std::atomic<bool> window_{false};
-  std::atomic<uint32_t> sent_{0};
-  std::atomic<uint32_t> limit_{0};
-  size_t filled_{0};
-  std::atomic<bool> pumping_{false};
-  std::atomic<bool> again_{false};
-  std::atomic<uint32_t> credited_frames_{0};
-  std::atomic<int64_t> credited_at_{0};
+  uint32_t credit_{0};
 };
 
 }
