@@ -416,23 +416,25 @@ void A2DPSource::load_output_delay_() {
   uint32_t hash = fnv1_hash("a2dp_source_output_delay");
   for (int i = 0; i < ESP_BD_ADDR_LEN; i++)
     hash = fnv1_hash_extend(hash, address[i]);
-  this->delay_pref_ = global_preferences->make_preference<uint32_t>(hash, true);
+  this->delay_pref_ = global_preferences->make_preference<int32_t>(hash, true);
   this->delay_pref_valid_ = true;
-  uint32_t ms = 0;
+  int32_t ms = 0;
   if (!this->delay_pref_.load(&ms))
     ms = 0;
-  this->delay_ms_.store(std::min(ms, MAX_OUTPUT_DELAY_MS), std::memory_order_relaxed);
-  ESP_LOGV(TAG, "Output delay of this device: %" PRIu32 " ms", this->delay_ms_.load(std::memory_order_relaxed));
+  this->delay_ms_.store(std::clamp<int32_t>(ms, MIN_OUTPUT_DELAY_MS, static_cast<int32_t>(MAX_OUTPUT_DELAY_MS)),
+                        std::memory_order_relaxed);
+  ESP_LOGV(TAG, "Output delay of this device: %" PRId32 " ms", this->delay_ms_.load(std::memory_order_relaxed));
   this->publish_output_delay_();
 }
 
-void A2DPSource::set_output_delay_ms(uint32_t ms) {
+void A2DPSource::set_output_delay_ms(int32_t ms) {
   if (!this->connected_.load() || !this->delay_pref_valid_) {
     ESP_LOGW(TAG, "No device connected");
     this->publish_output_delay_();
     return;
   }
-  ms = std::min(ms, this->max_delay_ms_.load(std::memory_order_relaxed));
+  ms = std::clamp<int32_t>(ms, MIN_OUTPUT_DELAY_MS,
+                           static_cast<int32_t>(this->max_delay_ms_.load(std::memory_order_relaxed)));
   this->delay_ms_.store(ms, std::memory_order_relaxed);
   this->delay_pref_.save(&ms);
   this->publish_output_delay_();
@@ -561,9 +563,9 @@ int32_t A2DPSource::fill_frames_(Frame *frames, int32_t frame_count) {
 
   const bool feeding = this->speaker_active_.load() && !this->speaker_finishing_.load();
   if (this->priming_.load()) {
-    const uint32_t delay = this->output_delay_ms();
+    const int32_t delay = this->output_delay_ms();
     size_t target = this->ring_bytes_;
-    if (delay != 0) {
+    if (delay > 0) {
       target = std::min<size_t>(target, (size_t) SAMPLE_RATE * BYTES_PER_FRAME * delay / 1000);
       target -= target % BYTES_PER_FRAME;
     }

@@ -92,18 +92,20 @@ class A2DPSource : public Component
 
   /// @brief How long the connected device takes to play what it receives (ms), as set for it; 0
   ///        while none is connected. Kept per device.
-  uint32_t output_delay_ms() const {
+  int32_t output_delay_ms() const {
     if (!this->connected_.load())
       return 0;
-    const uint32_t set = this->delay_ms_.load(std::memory_order_relaxed);
+    const int32_t set = this->delay_ms_.load(std::memory_order_relaxed);
     if (set != 0)
       return set;
-    return std::min<uint32_t>(this->reported_delay_ms_.load(std::memory_order_relaxed),
-                              this->max_delay_ms_.load(std::memory_order_relaxed));
+    return static_cast<int32_t>(std::min<uint32_t>(this->reported_delay_ms_.load(std::memory_order_relaxed),
+                                                   this->max_delay_ms_.load(std::memory_order_relaxed)));
   }
   /// @brief Sets and keeps the delay of the connected device.
-  void set_output_delay_ms(uint32_t ms);
+  void set_output_delay_ms(int32_t ms);
   static constexpr uint32_t MAX_OUTPUT_DELAY_MS = 1600;
+  static constexpr int32_t MIN_OUTPUT_DELAY_MS = -800;
+  int32_t min_output_delay_ms() const { return MIN_OUTPUT_DELAY_MS; }
   /// @brief The most a delay may be set to (what its user has room for, e.g. a video player's sound
   ///        lead), at most MAX_OUTPUT_DELAY_MS. A larger kept delay stays kept; its user clamps it.
   void set_max_output_delay_ms(uint32_t ms);
@@ -255,7 +257,7 @@ class A2DPSource : public Component
 
   std::atomic<bool> pairing_mode_{false};
   std::atomic<bool> connected_{false};
-  std::atomic<uint32_t> delay_ms_{0};
+  std::atomic<int32_t> delay_ms_{0};
   std::atomic<uint32_t> reported_delay_ms_{0};
   std::atomic<uint32_t> max_delay_ms_{MAX_OUTPUT_DELAY_MS};
   ESPPreferenceObject delay_pref_;

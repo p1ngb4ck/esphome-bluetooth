@@ -57,6 +57,7 @@ from esphome.const import (
 )
 from esphome.core import CORE, ID, CoroPriority, coroutine_with_priority
 import esphome.final_validate as fv
+from esphome.helpers import fnv1_hash
 from esphome.types import ConfigType
 from esphome.yaml_util import make_data_base
 
@@ -78,6 +79,8 @@ LibreTinyUARTComponent = uart_ns.class_(
     "LibreTinyUARTComponent", UARTComponent, cg.Component
 )
 HostUartComponent = uart_ns.class_("HostUartComponent", UARTComponent, cg.Component)
+# Base of UARTs without a wire; see require_virtual_uart().
+VirtualUARTComponent = uart_ns.class_("VirtualUARTComponent", UARTComponent)
 
 
 NATIVE_UART_CLASSES = (
@@ -405,6 +408,7 @@ async def to_code(config):
     # Skip the setter when the config matches the C++ initializer (UART_CONFIG_PARITY_NONE).
     if (parity := config[CONF_PARITY]) != "NONE":
         cg.add(var.set_parity(parity))
+    restore_line_settings(var, config[CONF_ID])
 
     if CONF_DEBUG in config:
         await debug_to_code(config[CONF_DEBUG], var)
@@ -661,6 +665,18 @@ def claim_exclusive(
     fv.id_declaration_match_schema(reject_dummy_receiver)(config[conf_key])
 
 
+def restore_line_settings(var: cg.MockObj, uart_id: ID) -> None:
+    """Let saved runtime line settings replace the yaml ones; call after the line setters."""
+    if CORE.is_esp32 or CORE.is_esp8266:
+        key = fnv1_hash(f"uart_line_settings:{uart_id.id}")
+        cg.add(var.restore_line_settings(key))
+
+
+def require_virtual_uart() -> None:
+    """Compile the VirtualUARTComponent base; call from the to_code of a class that derives from it."""
+    cg.add_define("USE_UART_VIRTUAL")
+
+
 async def register_uart_device(var, config):
     """Register a UART device, setting up all the internal values.
 
@@ -724,9 +740,12 @@ _platform_filter = filter_source_files_from_platform(
 )
 
 # uart_debugger.cpp is fully #ifdef'd on USE_UART_DEBUGGER, set only when a
-# debug block is configured.
+# debug block is configured; uart_virtual.cpp on USE_UART_VIRTUAL.
 _define_filter = filter_source_files_from_defines(
-    {"uart_debugger.cpp": "USE_UART_DEBUGGER"}
+    {
+        "uart_debugger.cpp": "USE_UART_DEBUGGER",
+        "uart_virtual.cpp": "USE_UART_VIRTUAL",
+    }
 )
 
 
