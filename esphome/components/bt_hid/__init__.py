@@ -6,11 +6,11 @@ Bluedroid's HID host on the BR/EDR controller, which is the USB dongle of usb_bl
 
 from esphome import automation
 import esphome.codegen as cg
-from esphome.components.bt_host import (
+from esphome.components.bt_pairing import (
     ADDRESS_GLOBAL_SCHEMA,
     CONF_ADDRESS_GLOBAL,
-    CONF_BT_HOST_ID,
-    BTHost,
+    CONF_BT_PAIRING_ID,
+    BTPairing,
     setup_address_global,
     validate_address_global,
 )
@@ -31,9 +31,9 @@ from esphome.helpers import fnv1_hash
 
 CODEOWNERS = ["@p1ngb4ck"]
 DEPENDENCIES = ["esp32"]
-AUTO_LOAD = ["hid", "bt_host"]
+AUTO_LOAD = ["hid", "bt_pairing", "bt_classic"]
 MULTI_CONF = True
-# Auto-loaded by bt_host, which creates its own instances.
+# Auto-loaded by bt_pairing, which creates its own instances.
 MULTI_CONF_NO_DEFAULT = True
 
 CONF_ON_PASSKEY = "on_passkey"
@@ -75,9 +75,9 @@ CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend(HID_INPUT_SCHEMA).extend(
     {
         cv.GenerateID(): cv.declare_id(BTHIDDevice),
         # Without it the entry is a slot: bt_hid.pair finds a device in pairing mode and
-        # bt_host keeps it across reboots.
+        # bt_pairing keeps it across reboots.
         cv.Optional(CONF_MAC_ADDRESS): cv.mac_address,
-        cv.OnlyWith(CONF_BT_HOST_ID, "bt_host"): cv.use_id(BTHost),
+        cv.OnlyWith(CONF_BT_PAIRING_ID, "bt_pairing"): cv.use_id(BTPairing),
         **ADDRESS_GLOBAL_SCHEMA,
         # Legacy pairing (older keyboards): this PIN is typed on the keyboard, then Enter.
         cv.Optional(CONF_PIN, default="0000"): _validate_pin,
@@ -102,13 +102,11 @@ CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend(HID_INPUT_SCHEMA).extend(
 
 
 def _final_validate(config):
-    from esphome.components.bt_host import classic_controller
-
     full = fv.full_config.get()
-    if classic_controller(full) is None:
+    if not any(c.get("bluedroid") for c in full.get("usb_bluetooth") or []):
         raise cv.Invalid(
-            "bt_hid needs a Bluetooth Classic controller: on the chip (ESP32, ESP32-S31) or a "
-            "usb_bluetooth dongle with bluedroid: true"
+            "bt_hid needs a Bluetooth Classic controller: a usb_bluetooth dongle with "
+            "bluedroid: true"
         )
     macs = [
         str(c[CONF_MAC_ADDRESS])
@@ -121,11 +119,11 @@ def _final_validate(config):
         raise cv.Invalid(f"{CONF_ADDRESS_GLOBAL} is for entries without mac_address")
     if (
         CONF_MAC_ADDRESS not in config
-        and CONF_BT_HOST_ID not in config
+        and CONF_BT_PAIRING_ID not in config
         and CONF_ADDRESS_GLOBAL not in config
     ):
         raise cv.Invalid(
-            "a bt_hid entry without mac_address is paired at runtime and needs bt_host "
+            "a bt_hid entry without mac_address is paired at runtime and needs bt_pairing "
             "or an address_global to keep the device"
         )
     validate_address_global(config)
@@ -141,8 +139,8 @@ async def to_code(config):
     if CONF_MAC_ADDRESS in config:
         cg.add(var.set_address(config[CONF_MAC_ADDRESS].as_hex))
     cg.add(var.set_slot(fnv1_hash(f"bt_hid:{config[CONF_ID]}")))
-    if CONF_BT_HOST_ID in config:
-        pairing = await cg.get_variable(config[CONF_BT_HOST_ID])
+    if CONF_BT_PAIRING_ID in config:
+        pairing = await cg.get_variable(config[CONF_BT_PAIRING_ID])
         cg.add(var.set_pairing(pairing))
     await setup_address_global(var, config)
     cg.add(var.set_pin(config[CONF_PIN]))
