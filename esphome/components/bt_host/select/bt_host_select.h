@@ -23,14 +23,14 @@ class BTHostSelect : public select::Select, public Component {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
-  void set_parent(BTHost *parent) { this->parent_ = parent; }
+  void set_parent(DevicePicker *parent) { this->parent_ = parent; }
   void set_devices(const std::vector<ScannedDevice> &devices);
 
  protected:
   void control(const std::string &value) override;
   void publish_options_();
 
-  BTHost *parent_{nullptr};
+  DevicePicker *parent_{nullptr};
   std::vector<std::string> option_storage_;
 };
 

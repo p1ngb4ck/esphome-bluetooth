@@ -19,7 +19,7 @@
 #ifdef USE_BT_CLASSIC
 #include "esphome/components/bt_host/gap_classic.h"
 #endif
-#ifdef USE_BT_PAIRING_HID
+#if defined(USE_BT_PAIRING_HID) || defined(USE_BT_OFFLOAD)
 #include "esphome/components/hid/hid_input.h"
 #endif
 
@@ -92,12 +92,22 @@ class PairingTarget {
 
 class BTHostSelect;
 
+class DevicePicker {
+ public:
+  virtual void pair_with(size_t index) = 0;
+};
+
+#if defined(USE_BT_PAIRING_HID) || defined(USE_BT_OFFLOAD)
+uint8_t device_class_kinds(uint8_t transport, uint32_t device_class);
+#endif
+
 // The devices paired through bt_hid and ble_client_hid slots, kept across reboots in
 // preferences or in a file on a storage. Bond keys stay in Bluedroid's own NVS store;
 // forgetting a device also deletes its bond there.
 // With max_hid_devices, it is also the HID input of every HID device paired through it: keys,
 // typed text (in its layout), pointer and controls, each from the device event_device() names.
-class BTHost : public Component
+class BTHost : public Component,
+               public DevicePicker
 #ifdef USE_BT_PAIRING_LE
     ,
                   public esp32_ble_tracker::ESPBTDeviceListener
@@ -202,7 +212,7 @@ class BTHost : public Component
   bool is_scanning() const { return this->scanning_.load(); }
   const std::vector<ScannedDevice> &scanned_devices() const { return this->scanned_; }
   /// Pairs a listed device through the slot or source that takes its kind.
-  void pair_with(size_t index);
+  void pair_with(size_t index) override;
   /// What the scan and a pick do, for the log, a screen or Home Assistant.
   /// Main loop: the scan's list changed (a device found or named), while the scan still runs too.
   template<typename F> void add_on_scanned_callback(F &&callback) {

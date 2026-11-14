@@ -3,6 +3,10 @@
 #include "esphome/core/defines.h"
 
 #ifdef USE_ESP32
+#include <sdkconfig.h>
+#endif
+
+#if defined(USE_ESP32) && defined(CONFIG_BT_BLUEDROID_ENABLED)
 
 #include <esp_gap_bt_api.h>
 

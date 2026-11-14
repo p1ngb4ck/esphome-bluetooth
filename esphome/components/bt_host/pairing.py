@@ -49,7 +49,8 @@ CONF_SLOTS = "slots"
 
 bt_host_ns = cg.esphome_ns.namespace("bt_host")
 # A HIDInput too (with max_hid_devices): hid_id for LVGL and the hid platforms.
-BTHost = bt_host_ns.class_("BTHost", cg.Component, hid.HIDInput)
+DevicePicker = bt_host_ns.class_("DevicePicker")
+BTHost = bt_host_ns.class_("BTHost", cg.Component, hid.HIDInput, DevicePicker)
 ForgetAllAction = bt_host_ns.class_(
     "ForgetAllAction", automation.Action, cg.Parented.template(BTHost)
 )

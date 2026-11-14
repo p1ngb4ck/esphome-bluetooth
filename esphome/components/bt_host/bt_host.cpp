@@ -804,7 +804,6 @@ void BTHost::add_hid_slot(hid::HIDInput *input, PairingTarget *target) {
     this->control_cb_.call(page, usage, value);
   });
 }
-#endif
 
 const hid::KeyboardLayout *BTHost::slot_layout_(const PairingTarget *target) const {
   if (this->device_layouts_.empty() || target->pairing_slot() == 0)
@@ -822,8 +821,13 @@ const hid::KeyboardLayout *BTHost::slot_layout_(const PairingTarget *target) con
 }
 
 uint8_t BTHost::record_kinds(const PairingRecord &record) {
-  const uint32_t value = record.device_class;
-  if (record.transport == static_cast<uint8_t>(Transport::LE)) {
+  return device_class_kinds(record.transport, record.device_class);
+}
+#endif
+
+#if defined(USE_BT_PAIRING_HID) || defined(USE_BT_OFFLOAD)
+uint8_t device_class_kinds(uint8_t transport, uint32_t value) {
+  if (transport == static_cast<uint8_t>(Transport::LE)) {
     if ((value >> 6) == 0x06)  // remote control category (0x0180)
       return hid::HID_DEVICE_REMOTE;
     switch (value) {
@@ -859,7 +863,9 @@ uint8_t BTHost::record_kinds(const PairingRecord &record) {
   }
   return kinds;
 }
+#endif
 
+#ifdef USE_BT_PAIRING_HID
 void BTHost::list_devices(std::vector<hid::InputDevice> &out) const {
   char mac[MAC_ADDRESS_PRETTY_BUFFER_SIZE];
   for (const auto &record : this->records_) {
@@ -927,6 +933,7 @@ void BTHost::set_device_layout(const std::string &key, const hid::KeyboardLayout
     this->device_layouts_.push_back(entry);
   }
 }
+#endif
 
 bool BTHost::pair_address(const std::string &address) {
   uint8_t bda[6];
