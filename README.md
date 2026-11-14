@@ -102,3 +102,22 @@ platform `bt_pairing` is `bt_host`, `bt_pairing_id` is `bt_host_id`; `external_c
 From the Waveshare ESP32-P4 Pi board's config (BLE on the C6, Classic on a USB dongle). `external_components`
 replaces components only; the ESPHome core of the build host stays as installed. With the other topics together
 use the combined branch `github://p1ngb4ck/esphome@topics-combined`.
+
+## Branch structure
+
+Each `pr/` branch holds one part of this topic on top of upstream and says in its `BRANCH.md` what it is based on. `main` holds all of them.
+
+| Branch | Based on |
+|---|---|
+| `pr/a2dp-source` | `pr/bt-pairing-hid`, `pr/esp32-ble-tracker-pause-scan` |
+| `pr/ble-nus` | `pr/uart-debugger-prefix-settings` of p1ngb4ck/esphome-uart-tcp |
+| `pr/bt-classic` | upstream only |
+| `pr/bt-host` | `pr/bt-classic`, `pr/bt-offload`, `pr/esp32-ble-bt-logs`, `pr/esp32-ble-nvs-ready`, `pr/esp32-ble-tracker-classic-scan-window`, `pr/esp32-ble-tracker-pause-scan`, `pr/hid` of p1ngb4ck/esphome-hid, `pr/esp32-exfat-fat-volumes` of p1ngb4ck/esphome-storage-interface |
+| `pr/bt-offload` | `pr/esp32-ble-start-order`, `pr/usb-bluetooth` of p1ngb4ck/esphome-usb-drivers |
+| `pr/bt-pairing-hid` | `pr/bt-classic`, `pr/hid` of p1ngb4ck/esphome-hid, `pr/storage` of p1ngb4ck/esphome-storage-interface |
+| `pr/bt-persistence` | `pr/storage` of p1ngb4ck/esphome-storage-interface |
+| `pr/esp32-ble-bt-logs` | upstream only |
+| `pr/esp32-ble-nvs-ready` | `pr/esp32-nvs-ready` of p1ngb4ck/esphome-storage-drivers |
+| `pr/esp32-ble-start-order` | `pr/wifi-startup-done-callback` of p1ngb4ck/esphome-network |
+| `pr/esp32-ble-tracker-classic-scan-window` | upstream only |
+| `pr/esp32-ble-tracker-pause-scan` | upstream only |
